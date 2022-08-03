@@ -218,6 +218,7 @@ def create_switches():
             rack=Rack.objects.get(name=f"PHX {row}-1"),
             position=42,
             face="front",
+            status=active,
         )
         for rack in range(1, 7):
             torswitch1 = Device.objects.create(
@@ -228,6 +229,7 @@ def create_switches():
                 rack=Rack.objects.get(name=f"PHX {row}-{rack}"),
                 position=41,
                 face="front",
+                status=active,
             )
             connect_tor_to_eor(eor=eorswitch, tor=torswitch1, starting_interface=rack * 2 - 1)
             torswitch2 = Device.objects.create(
@@ -238,6 +240,7 @@ def create_switches():
                 rack=Rack.objects.get(name=f"PHX {row}-{rack}"),
                 position=40,
                 face="front",
+                status=active,
             )
             connect_tor_to_eor(eor=eorswitch, tor=torswitch2, starting_interface=rack * 2 + 11)
 
