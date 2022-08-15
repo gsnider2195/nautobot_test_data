@@ -1,3 +1,6 @@
+from django.core.management import call_command
+from django.db import transaction
+
 from nautobot.dcim.choices import InterfaceTypeChoices
 from nautobot.dcim.models import Cable, Device, DeviceRole, DeviceType, Rack, RackGroup, Site
 from nautobot.dcim.models.device_component_templates import InterfaceTemplate
@@ -159,13 +162,13 @@ def create_device_types():
 
 def create_rack_groups():
     rack_groups = [
-        {"dc_name": "PHX", "num_rows": 7, "site": "Phoenix Datacenter"},
-        {"dc_name": "STL", "num_rows": 8, "site": "St Louis Datacenter"},
+        {"dc_name": "PHX", "site": "Phoenix Datacenter"},
+        {"dc_name": "STL", "site": "St Louis Datacenter"},
     ]
     for dc in rack_groups:
         site = Site.objects.get(name=dc["site"])
         parent = RackGroup.objects.create(name=f"{dc['dc_name']} Datacenter Racks (ALL)", site=site)
-        for row in range(1, dc["num_rows"] + 1):
+        for row in range(1, 9):
             RackGroup.objects.create(name=f"{dc['dc_name']} Row {row}", parent=parent, site=site)
 
 
@@ -208,49 +211,70 @@ def create_switches():
     sitephx = Site.objects.get(slug="phoenix-datacenter")
     sitestl = Site.objects.get(slug="st-louis-datacenter")
 
-    # Phoenix
-    for row in range(1, 8):
-        eorswitch = Device.objects.create(
-            name=f"phx-spn{row}",
-            device_role=roleeor,
-            device_type=typeeor,
-            site=sitephx,
-            rack=Rack.objects.get(name=f"PHX {row}-1"),
-            position=42,
-            face="front",
-            status=active,
-        )
-        for rack in range(1, 7):
-            torswitch1 = Device.objects.create(
-                name=f"phx-leaf{row}-{rack}-1",
-                device_role=roletor,
-                device_type=typetor,
-                site=sitephx,
-                rack=Rack.objects.get(name=f"PHX {row}-{rack}"),
-                position=41,
+    for dc_name, dc in {"PHX": sitephx, "STL": sitestl}.items():
+        for row in range(1, 9):
+            eorswitch = Device.objects.create(
+                name=f"{dc_name.lower()}-spn{row}",
+                device_role=roleeor,
+                device_type=typeeor,
+                site=dc,
+                rack=Rack.objects.get(name=f"{dc_name} {row}-1"),
+                position=42,
                 face="front",
                 status=active,
             )
-            connect_tor_to_eor(eor=eorswitch, tor=torswitch1, starting_interface=rack * 2 - 1)
-            torswitch2 = Device.objects.create(
-                name=f"phx-leaf{row}-{rack}-2",
-                device_role=roletor,
-                device_type=typetor,
-                site=sitephx,
-                rack=Rack.objects.get(name=f"PHX {row}-{rack}"),
-                position=40,
-                face="front",
-                status=active,
-            )
-            connect_tor_to_eor(eor=eorswitch, tor=torswitch2, starting_interface=rack * 2 + 11)
+            for rack in range(1, 9):
+                torswitch1 = Device.objects.create(
+                    name=f"{dc_name.lower()}-leaf{row}-{rack}-1",
+                    device_role=roletor,
+                    device_type=typetor,
+                    site=dc,
+                    rack=Rack.objects.get(name=f"{dc_name} {row}-{rack}"),
+                    position=41,
+                    face="front",
+                    status=active,
+                )
+                connect_tor_to_eor(eor=eorswitch, tor=torswitch1, starting_interface=rack * 2 - 1)
+                torswitch2 = Device.objects.create(
+                    name=f"{dc_name.lower()}-leaf{row}-{rack}-2",
+                    device_role=roletor,
+                    device_type=typetor,
+                    site=dc,
+                    rack=Rack.objects.get(name=f"{dc_name} {row}-{rack}"),
+                    position=40,
+                    face="front",
+                    status=active,
+                )
+                connect_tor_to_eor(eor=eorswitch, tor=torswitch2, starting_interface=rack * 2 + 15)
+
+
+def clear():
+    Cable.objects.all().delete()
+    Device.objects.all().delete()
+    Rack.objects.all().delete()
+    RackGroup.objects.all().delete()
+    DeviceType.objects.all().delete()
+    DeviceRole.objects.all().delete()
+    Manufacturer.objects.all().delete()
+    Site.objects.all().delete()
+    Region.objects.all().delete()
 
 
 def create():
-    create_regions()  # 18 regions
-    create_sites()  # 9 sites
-    create_manufacturers()  # 7 manufacturers
-    create_device_roles()  # 7 device roles
-    create_device_types()  # 5 device types
-    create_rack_groups()  # 17 rack groups
-    create_racks()  # 136 racks
-    create_switches()  # 91 devices, 168 cables, 2912 interfaces
+
+    with transaction.atomic():
+        create_regions()  # 18 regions
+        create_sites()  # 9 sites
+        create_manufacturers()  # 7 manufacturers
+        create_device_roles()  # 7 device roles
+        create_device_types()  # 5 device types
+        create_rack_groups()  # 18 rack groups
+        create_racks()  # 128 racks
+        create_switches()  # 272 devices, 512 cables, 8704 interfaces
+
+        # dump data
+        call_command(
+            "dumpdata", "--exclude", "django_rq", "--indent", "4", "--output", "db_output_test.json", "--format", "json"
+        )
+
+        transaction.set_rollback(True)
