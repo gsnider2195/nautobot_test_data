@@ -274,7 +274,21 @@ def create():
 
         # dump data
         call_command(
-            "dumpdata", "--exclude", "django_rq", "--indent", "4", "--output", "db_output_test.json", "--format", "json"
+            "dumpdata",
+            "--natural-foreign",
+            "--natural-primary",
+            "--exclude",
+            "django_rq",
+            "--exclude",
+            "contenttypes",
+            "--exclude" "auth.permission",
+            "--traceback",
+            "--indent",
+            "4",
+            "--output",
+            "db_output_test.json",
+            "--format",
+            "json",
         )
 
         transaction.set_rollback(True)
